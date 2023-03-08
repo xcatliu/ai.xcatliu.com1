@@ -21,11 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Single deploy job since we're just deploying
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,13 +32,44 @@ jobs:
           node-version: 16
       - run: npm ci
       - run: npm run build
+      # upload the artifact for use in either CD
+      # here, the 'dist' directory is compressed and uploaded to GitHub asset storage as 'build-artifact'
+      - name: Upload artifact
+        # https://github.com/actions/upload-artifact
+        uses: actions/upload-artifact@v3
+        with:
+          # the name to save the compressed asset as
+          name: build-artifact
+          # the directory or file to upload. adapt to your needs
+          path: build
+          # the artifact is only needed for the duration of the build-deploy workflow
+          # adapt to your needs
+          # https://github.com/actions/upload-artifact#retention-period
+          retention-days: 1
+  # Single deploy job since we're just deploying
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        # https://github.com/actions/download-artifact
+        uses: actions/download-artifact@v3
+        with:
+          # the same name as used in the build workflow
+          name: build-artifact
+          # where to save the artifact
+          # using the same path as in the build workflow "restores" the state from the end of the build workflow
+          path: build
       - name: Setup Pages
         uses: actions/configure-pages@v3
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
           # Upload entire repository
-          path: 'build'
+          path: build
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v1
